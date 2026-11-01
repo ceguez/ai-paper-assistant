@@ -24,16 +24,30 @@ app/
 tests/               FakeLLM + end-to-end tests (no model needed)
 ```
 
-## Run
+## Run in a virtual environment
+
+A venv adds no runtime overhead: it is the same interpreter with a private package folder,
+and the model runs in Ollama, outside Python. What matters for speed is using a native arm64
+Python on Apple Silicon; the setup script refuses an Intel (Rosetta) build.
 
 ```bash
-pip install -r requirements.txt
-ollama pull qwen2.5:7b-instruct-q4_K_M   # or any 7-9B tool-calling model; set PA_GEN_MODEL
+bash scripts/setup_venv.sh --dev          # creates .venv (Python 3.11-3.13, 3.12 preferred)
+source .venv/bin/activate
+
+ollama pull qwen2.5:7b-instruct-q4_K_M    # or any 7-9B tool-calling model; set PA_GEN_MODEL
 ollama pull nomic-embed-text
-export OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0
-uvicorn app.api:app --reload
-pytest -q                                # runs without Ollama
+# For the Ollama Mac app, set these once, then quit and reopen Ollama:
+launchctl setenv OLLAMA_FLASH_ATTENTION 1 && launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0
+
+python scripts/ingest.py pdfDocs           # ingest a folder of PDFs, timing each one
+uvicorn app.api:app                       # API on http://127.0.0.1:8000
+python -m pytest -q                       # tests; no model needed
 ```
+
+`--docling` adds Docling for better tables and layout. It downloads PyTorch (several GB) and
+is slower per page than the default PyMuPDF4LLM parser; it uses the Apple GPU through MPS.
+Data is stored in `data/` at the project root, wherever you launch from (`PA_DB_PATH` and
+`PA_UPLOAD_DIR` override it).
 
 ## Try it
 

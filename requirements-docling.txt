@@ -1,0 +1,2 @@
+# Optional: better tables and layout. Pulls in PyTorch (several GB); uses the Apple GPU via MPS.
+docling>=2.0

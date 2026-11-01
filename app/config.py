@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent  # project root, independent of the working directory
 
 
 def _env(name: str, default: str) -> str:
@@ -17,13 +20,13 @@ class Budgets:
     tools: int = 400
     memory: int = 500
     history: int = 1500
-    sources: int = 3800
+    sources: int = 3000
     output_reserve: int = 1200
 
     def check(self) -> None:
         used = self.system + self.tools + self.memory + self.history + self.sources + self.output_reserve
-        if used > self.num_ctx:
-            raise ValueError(f"budgets ({used}) exceed num_ctx ({self.num_ctx})")
+        if used > int(self.num_ctx * 0.9):  # 10% headroom for token-estimate error
+            raise ValueError(f"budgets ({used}) exceed 90% of num_ctx ({self.num_ctx})")
 
 
 @dataclass(frozen=True)
@@ -32,8 +35,8 @@ class Settings:
     gen_model: str = _env("GEN_MODEL", "qwen2.5:7b-instruct-q4_K_M")  # any 7-9B tool-calling model
     router_model: str = _env("ROUTER_MODEL", "")  # empty -> reuse gen_model at temperature 0
     embed_model: str = _env("EMBED_MODEL", "nomic-embed-text")
-    db_path: str = _env("DB_PATH", "data/assistant.db")
-    upload_dir: str = _env("UPLOAD_DIR", "data/papers")
+    db_path: str = _env("DB_PATH", str(ROOT / "data" / "assistant.db"))  # same file wherever you launch from
+    upload_dir: str = _env("UPLOAD_DIR", str(ROOT / "data" / "papers"))
     max_steps: int = int(_env("MAX_STEPS", "6"))
     schema_retries: int = int(_env("SCHEMA_RETRIES", "1"))
     keep_alive: str = _env("KEEP_ALIVE", "30m")

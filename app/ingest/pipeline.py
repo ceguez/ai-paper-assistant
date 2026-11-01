@@ -1,6 +1,7 @@
 """Ingestion: fingerprint -> parse -> metadata -> tree -> size -> pointers -> embed -> one atomic commit."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import time
@@ -80,6 +81,6 @@ async def ingest_pdf(store: Store, llm: LLM, path: str) -> str:
     paper_id = fingerprint(path)
     if store.paper_exists(paper_id):
         return paper_id  # idempotent re-upload
-    parsed = parse_pdf(path)
+    parsed = await asyncio.to_thread(parse_pdf, path)  # CPU-bound: keep it off the event loop
     await ingest_markdown(store, llm, parsed.markdown, paper_id, path)
     return paper_id

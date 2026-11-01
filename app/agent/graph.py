@@ -42,8 +42,10 @@ VERIFY_INSTRUCTIONS = "List each factual claim in the draft answer and whether t
 
 
 class Orchestrator:
-    def __init__(self, store: Store, llm: LLM, assembler: ContextAssembler | None = None):
-        self.store, self.llm = store, llm
+    def __init__(self, store: Store, llm: LLM, assembler: ContextAssembler | None = None,
+                 on_done: Callable[[RunState], Awaitable[None]] | None = None):
+        self.store, self.llm, self.on_done = store, llm, on_done
+        self._running: set[asyncio.Task] = set()  # strong refs: unreferenced tasks can be garbage-collected
         self.ctx = assembler or ContextAssembler()
         self.tools = Tools(store, llm)
         self.nodes: dict[str, NodeFn] = {
@@ -83,17 +85,17 @@ class Orchestrator:
         q: asyncio.Queue = asyncio.Queue()
         self._queues[state.run_id] = q
         task = asyncio.create_task(self._drive(state))
+        self._running.add(task)
+        task.add_done_callback(self._running.discard)
         task.add_done_callback(lambda _: q.put_nowait(None))  # sentinel
         try:
             while (ev := await q.get()) is not None:
                 yield ev
             await task  # surface unexpected exceptions
         finally:
+            # Client went away: stop streaming but let the run finish. Its events, answer and
+            # checkpoint are persisted, so a reconnect replays them from the database.
             self._queues.pop(state.run_id, None)
-            if not task.done():  # client disconnected -> cancel the run
-                task.cancel()
-                state.status = "cancelled"
-                self.checkpoint(state)
 
     async def _drive(self, state: RunState) -> None:
         """Execute nodes from state.node until done. Resumable: state.node is the resume point."""
@@ -117,6 +119,10 @@ class Orchestrator:
             self.store.add_message(state.session_id, "assistant", state.answer, state.run_id)
         self.emit(state, "done", {"answer": state.answer, "citations": state.citations, "status": state.status})
         self.checkpoint(state)
+        if self.on_done and state.status == "done":
+            hook = asyncio.create_task(self.on_done(state))
+            self._running.add(hook)
+            hook.add_done_callback(self._running.discard)
 
     # ---------------- nodes ----------------
     async def route(self, state: RunState) -> str:

@@ -1,11 +1,8 @@
+# Core runtime. Install into a virtual environment: bash scripts/setup_venv.sh
 pydantic>=2.7
 numpy>=1.26
 httpx>=0.27
 fastapi>=0.111
 uvicorn[standard]>=0.30
 python-multipart>=0.0.9   # FastAPI file uploads
-docling>=2.0              # primary PDF parser (heavy; optional if pymupdf4llm is present)
-pymupdf4llm>=0.0.17       # fast fallback parser
-instructor>=1.4           # optional: richer re-ask/validation loop over the OpenAI-compatible endpoint
-# dev
-pytest>=8
+pymupdf4llm>=0.0.17       # fast PDF parser, CPU only (AGPL: fine for personal/internal use)
