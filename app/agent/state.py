@@ -50,14 +50,12 @@ class Evidence(BaseModel):
     breadcrumb: str
     text: str
     score: float = 0.0
-    page: int | None = None
 
 
 class RunState(BaseModel):
     run_id: str
     session_id: str
     question: str
-    paper_ids: list[str] = Field(default_factory=list)   # empty = whole library
     route: Route | None = None
     search_query: str = ""
     step: int = 0

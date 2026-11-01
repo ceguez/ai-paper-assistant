@@ -7,7 +7,6 @@
 """
 from __future__ import annotations
 
-import logging
 import time
 
 from pydantic import BaseModel, Field
@@ -15,8 +14,6 @@ from pydantic import BaseModel, Field
 from .db import Store, to_blob
 from .ingest.tree import count_tokens
 from .llm import LLM
-
-log = logging.getLogger(__name__)
 
 
 class SessionSummary(BaseModel):
@@ -40,31 +37,25 @@ class FactUpdate(BaseModel):
     ops: list[FactOp] = Field(default_factory=list, max_length=6)
 
 
-async def compact_session(store: Store, llm: LLM, session_id: str, history_budget: int = 3000,
-                          keep_recent: int = 6) -> bool:
-    """Fold turns older than the last `keep_recent` into the rolling summary, once they
-    outgrow half the history slot. Each turn is summarised at most once."""
-    row = store.q1("SELECT summary, summarized_upto FROM sessions WHERE session_id=?", (session_id,))
-    if row is None:
+async def compact_session(store: Store, llm: LLM, session_id: str, history_budget: int = 1500) -> bool:
+    turns = store.history(session_id, limit=200)
+    if sum(count_tokens(t["content"]) for t in turns) <= history_budget:
         return False
-    rows = store.q("SELECT id, role, content FROM messages WHERE session_id=? AND id>? ORDER BY id",
-                   (session_id, row["summarized_upto"]))
-    old = rows[:-keep_recent] if len(rows) > keep_recent else []
-    if not old or sum(count_tokens(r["content"]) for r in old) < history_budget // 2:
-        return False
-    transcript = "\n".join(f"{r['role']}: {r['content']}" for r in old)
+    old = turns[: len(turns) // 2]
+    prior = store.session_summary(session_id)
+    transcript = "\n".join(f"{t['role']}: {t['content']}" for t in old)
     summary = await llm.structured(
         [{"role": "system", "content": "Update the running summary of a research conversation."},
-         {"role": "user", "content": f"<prior>{row['summary']}</prior>\n<turns>{transcript[:12000]}</turns>"}],
+         {"role": "user", "content": f"<prior>{prior}</prior>\n<turns>{transcript[:12000]}</turns>"}],
         SessionSummary, max_tokens=400)
     with store.tx() as c:
-        c.execute("UPDATE sessions SET summary=?, summarized_upto=? WHERE session_id=?",
-                  (summary.render(), old[-1]["id"], session_id))
+        c.execute("UPDATE sessions SET summary=? WHERE session_id=?", (summary.render(), session_id))
+        # Turns stay in `messages` for audit; ContextAssembler only reads the recent window.
     return True
 
 
 async def extract_facts(store: Store, llm: LLM, session_id: str, run_id: str, question: str, answer: str) -> int:
-    existing = store.q("SELECT id, text FROM facts WHERE valid=1 ORDER BY id DESC LIMIT 30")
+    existing = store.conn.execute("SELECT id, text FROM facts WHERE valid=1 ORDER BY id DESC LIMIT 30").fetchall()
     known = "\n".join(f"{r['id']}: {r['text']}" for r in existing) or "none"
     update = await llm.structured(
         [{"role": "system", "content": "Maintain durable facts about the user's research. Only add facts the user "
@@ -95,19 +86,12 @@ async def record_episode(store: Store, llm: LLM, session_id: str, run_id: str, q
                   (session_id, run_id, summary, to_blob(vec), time.time()))
 
 
-async def after_run(store: Store, llm: LLM, session_id: str, run_id: str, question: str, answer: str,
-                    extract: bool = True, history_budget: int = 3000) -> None:
-    """Runs after a finished run, off the request path. Failures here never affect the user.
-
-    On a single local GPU these calls queue behind the next question, so fact extraction can
-    be turned off with PA_MEMORY_EXTRACTION=false; episodes and compaction stay cheap.
-    """
-    jobs = [record_episode(store, llm, session_id, run_id, question, answer)]
-    if extract:
-        jobs.append(extract_facts(store, llm, session_id, run_id, question, answer))
-    jobs.append(compact_session(store, llm, session_id, history_budget))
-    for job in jobs:
+async def after_run(store: Store, llm: LLM, session_id: str, run_id: str, question: str, answer: str) -> None:
+    """Called as a background task once a run is done. Failures here never affect the user."""
+    for job in (record_episode(store, llm, session_id, run_id, question, answer),
+                extract_facts(store, llm, session_id, run_id, question, answer),
+                compact_session(store, llm, session_id)):
         try:
             await job
         except Exception:
-            log.exception("memory job failed")
+            pass  # log in production

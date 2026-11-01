@@ -1,10 +1,11 @@
-# Mirror of pyproject.toml for plain pip. Preferred setup: `bash scripts/setup_mac.sh` (uv, Python 3.12).
-starlette>=0.40
-uvicorn[standard]>=0.30
-httpx>=0.27
 pydantic>=2.7
 numpy>=1.26
-python-multipart>=0.0.9
-pymupdf4llm>=0.0.17
-# optional, better tables: docling>=2.0
-# tests: pytest>=8
+httpx>=0.27
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9   # FastAPI file uploads
+docling>=2.0              # primary PDF parser (heavy; optional if pymupdf4llm is present)
+pymupdf4llm>=0.0.17       # fast fallback parser
+instructor>=1.4           # optional: richer re-ask/validation loop over the OpenAI-compatible endpoint
+# dev
+pytest>=8

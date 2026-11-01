@@ -6,7 +6,7 @@ letting the runtime truncate the prompt.
 """
 from __future__ import annotations
 
-from ..config import Budgets
+from ..config import Budgets, settings
 from ..ingest.tree import count_tokens
 from .state import Evidence
 
@@ -26,15 +26,14 @@ def _trim(text: str, budget: int) -> str:
 
 
 class ContextAssembler:
-    def __init__(self, budgets: Budgets):
+    def __init__(self, budgets: Budgets = settings.budgets):
         self.b = budgets
 
     def sources_block(self, evidence: list[Evidence]) -> str:
         """Highest-scoring sections first; drop whole sections before truncating one."""
         out, used = [], 0
         for ev in sorted(evidence, key=lambda e: -e.score):
-            page = f' page="{ev.page}"' if ev.page else ""
-            block = f'<source id="n:{ev.node_id}" path="{ev.breadcrumb}"{page}>\n{ev.text}\n</source>'
+            block = f'<source id="n:{ev.node_id}" path="{ev.breadcrumb}">\n{ev.text}\n</source>'
             cost = count_tokens(block)
             if used + cost > self.b.sources:
                 remaining = self.b.sources - used

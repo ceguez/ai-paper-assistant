@@ -9,16 +9,15 @@ from .state import Evidence, RunState, ToolCall
 
 
 class Tools:
-    def __init__(self, store: Store, llm: LLM, section_budget: int = 2500):
+    def __init__(self, store: Store, llm: LLM, section_budget: int = 1800):
         self.store, self.llm, self.section_budget = store, llm, section_budget
 
     async def search_papers(self, state: RunState, query: str, k: int = 6) -> str:
         if not query.strip():
             return "error: empty query; provide keywords."
         qvec = (await self.llm.embed([query]))[0]
-        hits = self.store.search(query, qvec, k=k, paper_ids=state.paper_ids or None)
-        known = {c["node_id"] for c in state.candidates}
-        state.candidates += [h.__dict__ for h in hits if h.node_id not in known]
+        hits = self.store.search(query, qvec, k=k)
+        state.candidates = [h.__dict__ for h in hits]
         if not hits:
             return "no results; try different keywords."
         return "\n".join(f"{h.node_id} | {h.breadcrumb} | score={h.score:.3f}" for h in hits)
@@ -27,11 +26,9 @@ class Tools:
         """Pointer -> whole section. Expands to the node's own text plus its subsections
         until the section budget is met (the Proxy-Pointer 'load the full section' step)."""
         row = self.store.node(node_id)
-        if row is None or (state.paper_ids and row["paper_id"] not in state.paper_ids):
+        if row is None:
             known = ", ".join(c["node_id"] for c in state.candidates[:5]) or "none"
             return f"error: unknown node_id '{node_id}'. Known candidates: {known}"
-        if node_id in state.evidence:
-            return f"already in sources: {row['breadcrumb']}"
         parts, used = [row["text"]], count_tokens(row["text"] or "")
         for child in self.store.children(node_id):
             if child["kind"] != "section":
@@ -44,23 +41,21 @@ class Tools:
             used += cost
         text = "\n\n".join(p for p in parts if p).strip()
         score = next((c["score"] for c in state.candidates if c["node_id"] == node_id), 0.0)
-        state.evidence[node_id] = Evidence(node_id=node_id, paper_id=row["paper_id"], breadcrumb=row["breadcrumb"],
-                                           text=text, score=score, page=row["page_start"])
+        state.evidence[node_id] = Evidence(node_id=node_id, paper_id=row["paper_id"],
+                                           breadcrumb=row["breadcrumb"], text=text, score=score)
         return f"read {row['breadcrumb']} ({used} tokens) - added to sources."
 
     def get_element(self, state: RunState, node_id: str) -> str:
         row = self.store.node(node_id)
         if row is None or row["kind"] not in ("table", "figure"):
             return f"error: '{node_id}' is not a table or figure."
-        state.evidence[node_id] = Evidence(node_id=node_id, paper_id=row["paper_id"], breadcrumb=row["breadcrumb"],
-                                           text=row["text"], page=row["page_start"])
+        state.evidence[node_id] = Evidence(node_id=node_id, paper_id=row["paper_id"],
+                                           breadcrumb=row["breadcrumb"], text=row["text"])
         return f"added {row['kind']} '{row['title']}' to sources."
 
     def save_note(self, state: RunState, claim: str, node_id: str) -> str:
         if node_id not in state.evidence:
             return "error: notes must cite a section you have read (node_id in sources)."
-        if not claim.strip():
-            return "error: empty claim."
         nid = self.store.add_note(state.session_id, claim, state.evidence[node_id].breadcrumb, node_id)
         return f"note {nid} saved."
 
