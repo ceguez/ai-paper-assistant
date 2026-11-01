@@ -1,0 +1,24 @@
+{
+  "name": "paper-assistant-ui",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "3.4.14",
+    "marked": "18.0.10",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "0.28.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+/* Lab-notebook paper, blue-black ink, one action blue, and a highlighter that only ever
+   marks evidence: citation chips and the passages they point to. */
+:root {
+  --paper: #f6f7f9;
+  --sheet: #ffffff;
+  --ink: #1b2330;
+  --ink-soft: #5a6576;
+  --rule: #dde2ea;
+  --action: #2846a6;
+  --action-ink: #ffffff;
+  --mark: #f2d648;
+  --mark-ink: #1b2330;
+  --mark-wash: #fbf1b8;
+  --danger: #b4232f;
+  --ok: #2f7d4f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #13171e;
+    --sheet: #1a2029;
+    --ink: #e6eaf0;
+    --ink-soft: #9aa5b5;
+    --rule: #2b3340;
+    --action: #7c9bff;
+    --action-ink: #0e1420;
+    --mark: #e3c53a;
+    --mark-ink: #13171e;
+    --mark-wash: #3a3418;
+    --danger: #ff7b85;
+    --ok: #6fcf97;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-rule: var(--rule);
+  --color-action: var(--action);
+  --color-action-ink: var(--action-ink);
+  --color-mark: var(--mark);
+  --color-mark-ink: var(--mark-ink);
+  --color-mark-wash: var(--mark-wash);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+  --font-reading: "Iowan Old Style", "Charter", "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 4px; }
+/* The composer frame shows focus itself. */
+textarea:focus-visible { outline: none; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+
+/* Answers read like the paper they come from. */
+.prose-answer { font-family: var(--font-reading); font-size: 17px; line-height: 1.6; max-width: 68ch; }
+.prose-answer p { margin: 0 0 0.8em; }
+.prose-answer h1, .prose-answer h2, .prose-answer h3 {
+  font-family: var(--font-sans); font-weight: 600; font-size: 15px; margin: 1.2em 0 0.4em;
+}
+.prose-answer ul, .prose-answer ol { margin: 0 0 0.8em; padding-left: 1.3em; }
+.prose-answer ul { list-style: disc; }
+.prose-answer ol { list-style: decimal; }
+.prose-answer li::marker { color: var(--ink-soft); }
+.prose-answer li { margin: 0.2em 0; }
+.prose-answer code { font-size: 0.88em; background: var(--rule); padding: 0.05em 0.3em; border-radius: 3px; }
+.prose-answer pre { background: var(--sheet); border: 1px solid var(--rule); padding: 10px 12px; border-radius: 6px;
+  overflow-x: auto; font-size: 13px; line-height: 1.45; }
+.prose-answer pre code { background: none; padding: 0; }
+.prose-answer table { border-collapse: collapse; font-family: var(--font-sans); font-size: 13px; margin: 0 0 0.8em; }
+.prose-answer th, .prose-answer td { border: 1px solid var(--rule); padding: 4px 8px; text-align: left; }
+.prose-answer blockquote { margin: 0.8em 0; padding-left: 12px; border-left: 3px solid var(--danger);
+  color: var(--ink-soft); font-family: var(--font-sans); font-size: 13px; }
+
+/* Citation: a highlighter stroke with the source number. */
+.cite {
+  display: inline-block; min-width: 1.35em; padding: 0 0.3em; margin: 0 0.1em;
+  font: 600 11px/1.55 var(--font-sans); vertical-align: 0.25em; text-align: center;
+  background: var(--mark); color: var(--mark-ink); border: 0; border-radius: 2px 6px 3px 7px;
+}
+.cite:hover { filter: brightness(0.95); }
+.cite[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+
+.caret::after {
+  content: ""; display: inline-block; width: 0.5em; height: 1em; margin-left: 2px; vertical-align: -0.15em;
+  background: var(--ink-soft); animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .caret::after { animation: none; } }
+
+.scroll-thin { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
