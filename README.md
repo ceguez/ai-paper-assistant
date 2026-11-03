@@ -39,6 +39,17 @@ ollama pull nomic-embed-text
 # For the Ollama Mac app, set these once, then quit and reopen Ollama:
 launchctl setenv OLLAMA_FLASH_ATTENTION 1 && launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0
 
+## Homebrew command-line install (no app): you need the server running somewhere, either in a second terminal or as a background service:
+# Terminal 2 (leave it open), with the memory settings set before starting:
+OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_NUM_PARALLEL=1 ollama serve
+
+# or as a background service instead of a terminal:
+brew services start ollama
+
+##To check before ingesting, from any terminal:
+curl -s localhost:11434/api/version     # prints a version if the server is up
+ollama list                              # should list qwen2.5:7b-instruct-q4_K_M and nomic-embed-text
+
 python scripts/ingest.py pdfDocs           # ingest a folder of PDFs, timing each one
 uvicorn app.api:app                       # API on http://127.0.0.1:8000
 python -m pytest -q                       # tests; no model needed

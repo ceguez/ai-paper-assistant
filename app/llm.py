@@ -98,6 +98,12 @@ class OllamaLLM:
                 if chunk.get("done"):
                     break
 
+    async def list_models(self) -> list[str]:
+        """Names of the models Ollama has pulled (GET /api/tags)."""
+        r = await self._http.get("/api/tags", timeout=5.0)
+        r.raise_for_status()
+        return [m["name"] for m in r.json().get("models", [])]
+
     async def embed(self, texts):
         data = await self._post("/api/embed", {"model": settings.embed_model, "input": texts})
         return data["embeddings"]
