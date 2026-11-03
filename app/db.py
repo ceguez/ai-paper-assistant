@@ -11,6 +11,7 @@ a library grows past that.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Iterator
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 2
 SCHEMA = """
@@ -74,6 +77,63 @@ CREATE TABLE IF NOT EXISTS notes (           -- research notebook written by the
   id INTEGER PRIMARY KEY, session_id TEXT, claim TEXT, evidence TEXT, node_id TEXT, created_at REAL
 );
 """
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    """Bring a database made by an older SCHEMA up to date, in place, keeping its data.
+
+    `CREATE TABLE IF NOT EXISTS` skips tables that already exist, so columns added to SCHEMA
+    later never reach an existing file; queries that use them then fail with
+    "no such column". Compare every table with a fresh copy of SCHEMA and add what is
+    missing. Runs on every start (a few PRAGMAs) and is idempotent, so it also repairs a
+    file that was stamped with the current version without being migrated.
+    """
+    ref = sqlite3.connect(":memory:")
+    try:
+        ref.executescript(SCHEMA)
+        added: dict[str, set[str]] = {}
+        for (table,) in ref.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+            have = {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+            if not have:
+                continue  # created by executescript just now, or a virtual table
+            for _, col, ctype, notnull, default, pk in ref.execute(f'PRAGMA table_info("{table}")'):
+                if col in have:
+                    continue
+                if pk:
+                    raise RuntimeError(f"cannot migrate {table}: primary key column {col} is missing; "
+                                       "move the database aside and re-ingest")
+                ddl = f'ALTER TABLE "{table}" ADD COLUMN "{col}" {ctype}'
+                if default is not None:
+                    ddl += f" DEFAULT {default}"
+                if notnull and default is not None:
+                    ddl += " NOT NULL"
+                conn.execute(ddl)
+                added.setdefault(table, set()).add(col)
+    finally:
+        ref.close()
+
+    # Fill new columns on old rows with what the old data implies.
+    papers, sessions = added.get("papers", set()), added.get("sessions", set())
+    if "updated_at" in papers:
+        conn.execute("UPDATE papers SET updated_at=created_at WHERE updated_at IS NULL")
+    if "filename" in papers:
+        for pid, path in conn.execute("SELECT paper_id, file_path FROM papers WHERE filename IS NULL").fetchall():
+            conn.execute("UPDATE papers SET filename=? WHERE paper_id=?", (Path(path or "").name or None, pid))
+    if "node_count" in papers:
+        conn.execute("UPDATE papers SET node_count=(SELECT COUNT(*) FROM nodes n WHERE n.paper_id=papers.paper_id) "
+                     "WHERE node_count IS NULL")
+    if "page_count" in papers:
+        conn.execute("UPDATE papers SET page_count=(SELECT MAX(page_end) FROM nodes n WHERE n.paper_id=papers.paper_id) "
+                     "WHERE page_count IS NULL")
+    if "updated_at" in sessions:
+        conn.execute("UPDATE sessions SET updated_at=created_at WHERE updated_at IS NULL")
+    # The old queue used status 'pending'; the worker only picks up 'queued'.
+    conn.execute("UPDATE papers SET status='queued' WHERE status='pending'")
+
+    for table, cols in added.items():
+        log.warning("migrated database: added %s.%s", table, ", ".join(sorted(cols)))
+    conn.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+    conn.commit()
 
 
 def to_blob(vec: list[float]) -> bytes:
@@ -142,8 +202,7 @@ class Store:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
-        self.conn.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
-        self.conn.commit()
+        migrate(self.conn)
         self._lock = threading.RLock()  # serialises writers from worker threads
         self.vectors = VectorCache()
 
